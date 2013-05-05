@@ -1,13 +1,18 @@
 # XDCCmon by Steffen Beyer (xdccmon@reactor.de)
-# version 0.5, 4. feb 2003
+# version 0.55, 5. feb 2003
 
 # x-chat script
 # records file offerings on all channels
 
+# http://www.reactor.de/xdccmon/
+
 # tested under linux with x-chat 1.8.9 and perl 5.6.1
 
-# license: GPL
+# license: GPL, version 2 or newer
+# (http://www.gnu.org/licenses/gpl.html)
 
+
+package XDCCmon;
 
 # configuration
 
@@ -38,32 +43,45 @@ my $color3 = 10;
 use warnings;
 use strict;
 
-use constant VERSION => "0.5";
+use constant VERSION => "0.55";
+
+use constant COLOR => "\003";
+use constant BOLD => "\002";
 
 my %memory = my @access = ();
 my $lastnew = my $maxtotal = 0;
 $keep *= 60;
 
-my $color = "\003";
-$_ = "$color$_" foreach ($color1,$color2,$color3);
-my $bold = "\002";
+$_ = COLOR . ($_ < 10 ? "0" : "") . $_ foreach ($color1,$color2,$color3);
 
 IRC::register("XDCCmon",VERSION,"","");
 IRC::print("$color1** XDCCmon version " . VERSION .
 	" by Steffen Beyer (xdccmon\@reactor.de)\n");
+IRC::add_message_handler("PRIVMSG","XDCCmon::msg_handler");
+IRC::add_command_handler($cmdname,"XDCCmon::cmd_handler");
 IRC::print("$color2++ running. (try \"/$cmdname help\")\n");
-IRC::add_message_handler("PRIVMSG","msg_handler");
-IRC::add_command_handler($cmdname,"cmd_handler");
 
 sub msg_handler {
 	my ($nick,$channel,$msg) = shift =~ /^:(.*?)!.* PRIVMSG (.*?) :(.*)$/;
-	if ($msg =~ /^.{0,14}#\d/ and $msg =~ /\[.{2,8}\]/) {
+
+	my $plain = $msg;
+	$plain =~ s/(?:@{[ COLOR ]}\d{0,2}(?:,\d{1,2})?|@{[ BOLD ]}|[\004-\037])//g;
+
+	if ($plain =~ /^.{0,14}#\d{1,5}\D/ and
+		$plain =~ /[«\(\[].{0,4}\d.{0,4}[\]\)»]/) {
+
 		my $result = "$channel ${nick}: $msg";
-		my $key = $result;
-		$key =~ s/\s\d+x\b//;
+		my $key = "$channel ${nick}: $plain";
+		$key =~ s/\s*\D\d+(?:x|\s*gets)\b//;
+
 		$memory{$key}->{tfirst} = time unless defined $memory{$key};
 		$memory{$key}->{tlast} = time;
 		$memory{$key}->{wcount} = $result;
+
+		my $tlimit = time - $keep;
+		foreach my $entry (keys %memory) {
+			delete $memory{$entry} if $memory{$entry}->{tlast} < $tlimit;
+		}
 
 		$maxtotal = keys %memory if $maxtotal < keys %memory;
 	}
@@ -74,13 +92,8 @@ sub msg_handler {
 sub cmd_handler {
 	my $command = lc shift;
 
-	my $tlimit = time - $keep;
-	foreach my $entry (keys %memory) {
-		delete $memory{$entry} if $memory{$entry}->{tlast} < $tlimit;
-	}
-
 	sub sortrule {
-		($a =~ /^(.+?)#\d/)[0] cmp ($b =~ /^(.+?)#\d/)[0] ||
+		lc(($a =~ /^(.+?)#\d/)[0]) cmp lc(($b =~ /^(.+?)#\d/)[0]) ||
 		($a =~ /#(\d+)/)[0] <=> ($b =~ /#(\d+)/)[0]
 	};
 
@@ -93,7 +106,7 @@ sub cmd_handler {
 
 		($access[$i]->{nick},$access[$i]->{id}) =
 			($entry =~ /^.*? (.*?): .*(#\d{1,3})/);
-		join("",$bold," "x($maxlen - length $i),$i++,"${bold}: ",
+		join("",BOLD," "x($maxlen - length $i),$i++,BOLD,": ",
 			$memory{$entry}->{wcount},"\n");
 	};
 
@@ -141,14 +154,19 @@ sub cmd_handler {
 
 	} elsif ($command eq "stats") {
 		my %stats;
-		$stats{($_ =~ /^(.*?) /)[0]}++ foreach (keys %memory);
+		foreach my $entry (keys %memory) {
+			my $channel = ($entry =~ /^(.*?) /)[0];
+			$stats{lc $channel}->{count}++;
+			$stats{lc $channel}->{name} = $channel;
+		}
 
 		IRC::print("$color2++ XDCCmon channel stats:\n");
 
 		my $total = 0;
 		foreach my $channel (sort keys %stats) {
-			IRC::print("${channel}: $stats{$channel}\n");
-			$total += $stats{$channel};
+			IRC::print($stats{$channel}->{name} . ": " .
+				$stats{$channel}->{count} . "\n");
+			$total += $stats{$channel}->{count};
 		}
 
 		IRC::print(join("","${color3}total files: $total (max. $maxtotal)   channels: ",
@@ -161,18 +179,18 @@ sub cmd_handler {
 		IRC::print("$color2++ XDCCmon memory cleared.\n");
 
 	} elsif ($command eq "help") {
-		my $head = "$color3/$cmdname ";
-		IRC::print(join("","$color2++ XDCCmon usage:\n",
-			$head,"show         ${color}display all collected entries\n",
-			$head,"new          ${color}display new entries since last \"/$cmdname new\"\n",
-			$head,"grep WORD+   ${color}search memory for entries containing all selected words\n",
-			$head,"get ID       ${color}trigger download of file with selected ID (\"xdcc send #x\")\n",
-			$head,"stats        ${color}display channel statistics\n",
-			$head,"reset        ${color}clear memory\n"));
+		my $head = "\n$color3/$cmdname ";
+		IRC::print(join($head,"$color2++ XDCCmon usage:",
+			"show         " . COLOR . "display all collected entries",
+			"new          " . COLOR . "display new entries since last \"/$cmdname new\"",
+			"grep WORD+   " . COLOR . "search memory for entries containing all selected words",
+			"get ID       " . COLOR . "trigger download of file with selected ID (\"xdcc send #x\")",
+			"stats        " . COLOR . "display channel statistics",
+			"reset        " . COLOR . "clear memory\n"));
 
 	} else {
 		IRC::print("$color2++ XDCCmon unknown command: $command\n");
-		IRC::print("$color2++ available: $bold(get ID) (grep WORD+) " .
+		IRC::print("$color2++ available: " . BOLD . "(get ID) (grep WORD+) " .
 			"new reset show stats\n");
 	}
 
