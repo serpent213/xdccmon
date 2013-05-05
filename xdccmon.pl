@@ -56,143 +56,143 @@ $_ = COLOR . ($_ < 10 ? "0" : "") . $_ foreach ($color1,$color2,$color3);
 
 IRC::register("XDCCmon",VERSION,"","");
 IRC::print("$color1** XDCCmon version " . VERSION .
-	" by Steffen Beyer (xdccmon\@reactor.de)\n");
+    " by Steffen Beyer (xdccmon\@reactor.de)\n");
 IRC::add_message_handler("PRIVMSG","XDCCmon::msg_handler");
 IRC::add_command_handler($cmdname,"XDCCmon::cmd_handler");
 IRC::print("$color2++ running. (try \"/$cmdname help\")\n");
 
 sub msg_handler {
-	my ($nick,$channel,$msg) = shift =~ /^:(.*?)!.* PRIVMSG (.*?) :(.*)$/;
+    my ($nick,$channel,$msg) = shift =~ /^:(.*?)!.* PRIVMSG (.*?) :(.*)$/;
 
-	my $plain = $msg;
-	$plain =~ s/(?:@{[ COLOR ]}\d{0,2}(?:,\d{1,2})?|@{[ BOLD ]}|[\004-\037])//g;
+    my $plain = $msg;
+    $plain =~ s/(?:@{[ COLOR ]}\d{0,2}(?:,\d{1,2})?|@{[ BOLD ]}|[\004-\037])//g;
 
-	if ($plain =~ /^.{0,14}#\d{1,5}\D/ and
-		$plain =~ /[«\(\[].{0,4}\d.{0,4}[\]\)»]/) {
+    if ($plain =~ /^.{0,14}#\d{1,5}\D/ and
+        $plain =~ /[«\(\[].{0,4}\d.{0,4}[\]\)»]/) {
 
-		my $result = "$channel ${nick}: $msg";
-		my $key = "$channel ${nick}: $plain";
-		$key =~ s/\s*\D\d+(?:x|\s*gets)\b//;
+        my $result = "$channel ${nick}: $msg";
+        my $key = "$channel ${nick}: $plain";
+        $key =~ s/\s*\D\d+(?:x|\s*gets)\b//;
 
-		$memory{$key}->{tfirst} = time unless defined $memory{$key};
-		$memory{$key}->{tlast} = time;
-		$memory{$key}->{wcount} = $result;
+        $memory{$key}->{tfirst} = time unless defined $memory{$key};
+        $memory{$key}->{tlast} = time;
+        $memory{$key}->{wcount} = $result;
 
-		my $tlimit = time - $keep;
-		foreach my $entry (keys %memory) {
-			delete $memory{$entry} if $memory{$entry}->{tlast} < $tlimit;
-		}
+        my $tlimit = time - $keep;
+        foreach my $entry (keys %memory) {
+            delete $memory{$entry} if $memory{$entry}->{tlast} < $tlimit;
+        }
 
-		$maxtotal = keys %memory if $maxtotal < keys %memory;
-	}
+        $maxtotal = keys %memory if $maxtotal < keys %memory;
+    }
 
-	return 0;
+    return 0;
 }
 
 sub cmd_handler {
-	my $command = lc shift;
+    my $command = lc shift;
 
-	sub sortrule {
-		lc(($a =~ /^(.+?)#\d/)[0]) cmp lc(($b =~ /^(.+?)#\d/)[0]) ||
-		($a =~ /#(\d+)/)[0] <=> ($b =~ /#(\d+)/)[0]
-	};
+    sub sortrule {
+        lc(($a =~ /^(.+?)#\d/)[0]) cmp lc(($b =~ /^(.+?)#\d/)[0]) ||
+        ($a =~ /#(\d+)/)[0] <=> ($b =~ /#(\d+)/)[0]
+    };
 
-	my $i = 1;
-	my $maxlen = length keys %memory;
-	my $showline = sub {
-		my $entry = shift;
+    my $i = 1;
+    my $maxlen = length keys %memory;
+    my $showline = sub {
+        my $entry = shift;
 
-		@access = () if $i == 1;
+        @access = () if $i == 1;
 
-		($access[$i]->{nick},$access[$i]->{id}) =
-			($entry =~ /^.*? (.*?): .*(#\d{1,3})/);
-		join("",BOLD," "x($maxlen - length $i),$i++,BOLD,": ",
-			$memory{$entry}->{wcount},"\n");
-	};
+        ($access[$i]->{nick},$access[$i]->{id}) =
+            ($entry =~ /^.*? (.*?): .*(#\d{1,3})/);
+        join("",BOLD," "x($maxlen - length $i),$i++,BOLD,": ",
+            $memory{$entry}->{wcount},"\n");
+    };
 
-	$command = $defaction unless $command;
-		
-	if ($command eq "show") {
-		IRC::print("$color2++ XDCCmon catched:\n");
+    $command = $defaction unless $command;
 
-		IRC::print(&$showline($_)) foreach (sort sortrule keys %memory);
+    if ($command eq "show") {
+        IRC::print("$color2++ XDCCmon catched:\n");
 
-	} elsif ($command eq "new") {
-		IRC::print("$color2++ XDCCmon catched recently:\n");
+        IRC::print(&$showline($_)) foreach (sort sortrule keys %memory);
 
-		foreach my $entry (sort sortrule keys %memory) {
-			IRC::print(&$showline($entry))
-				if $memory{$entry}->{tfirst} >= $lastnew;
-		}
+    } elsif ($command eq "new") {
+        IRC::print("$color2++ XDCCmon catched recently:\n");
 
-		$lastnew = time;
+        foreach my $entry (sort sortrule keys %memory) {
+            IRC::print(&$showline($entry))
+                if $memory{$entry}->{tfirst} >= $lastnew;
+        }
 
-	} elsif ($command =~ /^get\s+(\d+)\s*$/) {
-		my $monid = $1;
+        $lastnew = time;
 
-		if (defined $access[$monid]) {
-			my ($id,$nick) = ($access[$monid]->{id},$access[$monid]->{nick});
+    } elsif ($command =~ /^get\s+(\d+)\s*$/) {
+        my $monid = $1;
 
-			IRC::print("$color2++ XDCCmon get $id from $nick\n");
-			IRC::command("/msg $nick xdcc send $id");
-		} else {
-			IRC::print("$color2++ XDCCmon get: invalid ID\n");
-		}
+        if (defined $access[$monid]) {
+            my ($id,$nick) = ($access[$monid]->{id},$access[$monid]->{nick});
 
-	} elsif ($command =~ /^grep\s+(.*?)\s*$/) {
-		my @patterns = split /\s+/,$1;
-		IRC::print("$color2++ XDCCmon search: " .
-			join("+",@patterns) . "\n");
+            IRC::print("$color2++ XDCCmon get $id from $nick\n");
+            IRC::command("/msg $nick xdcc send $id");
+        } else {
+            IRC::print("$color2++ XDCCmon get: invalid ID\n");
+        }
 
-		ENTRY: foreach my $entry (sort sortrule keys %memory) {
-			foreach my $pattern (@patterns) {
-				next ENTRY unless $entry =~ /$pattern/i;
-			}
+    } elsif ($command =~ /^grep\s+(.*?)\s*$/) {
+        my @patterns = split /\s+/,$1;
+        IRC::print("$color2++ XDCCmon search: " .
+            join("+",@patterns) . "\n");
 
-			IRC::print(&$showline($entry));
-		}
+        ENTRY: foreach my $entry (sort sortrule keys %memory) {
+            foreach my $pattern (@patterns) {
+                next ENTRY unless $entry =~ /$pattern/i;
+            }
 
-	} elsif ($command eq "stats") {
-		my %stats;
-		foreach my $entry (keys %memory) {
-			my $channel = ($entry =~ /^(.*?) /)[0];
-			$stats{lc $channel}->{count}++;
-			$stats{lc $channel}->{name} = $channel;
-		}
+            IRC::print(&$showline($entry));
+        }
 
-		IRC::print("$color2++ XDCCmon channel stats:\n");
+    } elsif ($command eq "stats") {
+        my %stats;
+        foreach my $entry (keys %memory) {
+            my $channel = ($entry =~ /^(.*?) /)[0];
+            $stats{lc $channel}->{count}++;
+            $stats{lc $channel}->{name} = $channel;
+        }
 
-		my $total = 0;
-		foreach my $channel (sort keys %stats) {
-			IRC::print($stats{$channel}->{name} . ": " .
-				$stats{$channel}->{count} . "\n");
-			$total += $stats{$channel}->{count};
-		}
+        IRC::print("$color2++ XDCCmon channel stats:\n");
 
-		IRC::print(join("","${color3}total files: $total (max. $maxtotal)   channels: ",
-			scalar keys %stats,"   files/channel: ",
-			keys(%stats) ? sprintf("%.1f",$total/(keys %stats)) : "mu",
-			"\n"));
+        my $total = 0;
+        foreach my $channel (sort keys %stats) {
+            IRC::print($stats{$channel}->{name} . ": " .
+                $stats{$channel}->{count} . "\n");
+            $total += $stats{$channel}->{count};
+        }
 
-	} elsif ($command eq "reset") {
-		%memory = ();
-		IRC::print("$color2++ XDCCmon memory cleared.\n");
+        IRC::print(join("","${color3}total files: $total (max. $maxtotal)   channels: ",
+            scalar keys %stats,"   files/channel: ",
+            keys(%stats) ? sprintf("%.1f",$total/(keys %stats)) : "mu",
+            "\n"));
 
-	} elsif ($command eq "help") {
-		my $head = "\n$color3/$cmdname ";
-		IRC::print(join($head,"$color2++ XDCCmon usage:",
-			"show         " . COLOR . "display all collected entries",
-			"new          " . COLOR . "display new entries since last \"/$cmdname new\"",
-			"grep WORD+   " . COLOR . "search memory for entries containing all selected words",
-			"get ID       " . COLOR . "trigger download of file with selected ID (\"xdcc send #x\")",
-			"stats        " . COLOR . "display channel statistics",
-			"reset        " . COLOR . "clear memory\n"));
+    } elsif ($command eq "reset") {
+        %memory = ();
+        IRC::print("$color2++ XDCCmon memory cleared.\n");
 
-	} else {
-		IRC::print("$color2++ XDCCmon unknown command: $command\n");
-		IRC::print("$color2++ available: " . BOLD . "(get ID) (grep WORD+) " .
-			"new reset show stats\n");
-	}
+    } elsif ($command eq "help") {
+        my $head = "\n$color3/$cmdname ";
+        IRC::print(join($head,"$color2++ XDCCmon usage:",
+            "show         " . COLOR . "display all collected entries",
+            "new          " . COLOR . "display new entries since last \"/$cmdname new\"",
+            "grep WORD+   " . COLOR . "search memory for entries containing all selected words",
+            "get ID       " . COLOR . "trigger download of file with selected ID (\"xdcc send #x\")",
+            "stats        " . COLOR . "display channel statistics",
+            "reset        " . COLOR . "clear memory\n"));
 
-  	return 1;
+    } else {
+        IRC::print("$color2++ XDCCmon unknown command: $command\n");
+        IRC::print("$color2++ available: " . BOLD . "(get ID) (grep WORD+) " .
+            "new reset show stats\n");
+    }
+
+    return 1;
 }
